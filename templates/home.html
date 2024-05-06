@@ -1,0 +1,30 @@
+{% extends 'base.html' %} {% block content %}
+<form method="post" class="buttons">
+  <div class="welcome-message">
+    <h1>Welcome, {{ user.username }}</h1>
+  </div>
+  <div>
+    <label for="max_members">Max Group Members:</label>
+    <input type="number" name="max_members" min="1" placeholder="Enter max number of members"/>
+  </div>
+  <div class="join">
+    <input type="text" placeholder="Room Code" name="code" value="{{code}}" />
+    <button type="submit" name="join">Join a Room</button>
+  </div>
+  <button type="submit" name="create" class="create-btn">Create a Room</button>
+  <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+  <h3>Your Groups:</h3>
+  <ul>
+      {% for group in groups %}
+      <li>
+          <a href="{{ url_for('rate_songs', code=group.code) }}">{{ group.code }}</a>
+      </li>
+      {% endfor %}
+  </ul>
+  {% if error %}
+  <ul>
+    <h3>{{error}}</h3>
+  </ul>
+  {% endif %}
+</form>
+{% endblock %}

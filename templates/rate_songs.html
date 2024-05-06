@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Rate Songs</title>
+    <link rel="stylesheet" href="{{url_for('static', filename='css/style.css')}}">
+</head>
+<body>
+    <div class="container">
+        <h1>Rate Songs</h1>
+        <form action="{{ url_for('submit_ratings', code=code) }}" method="post" class="song-rating-form">
+            {% for song in songs %}
+            <div class="song">
+                <div class="song-info">
+                    <span class="song-title">{{ song.name }}</span>
+                    <!-- Spotify Embedded Player -->
+                    <iframe src="https://open.spotify.com/embed/track/{{ song.spotify_id }}" width="300" height="80" frameborder="0" allowtransparency="true" allow="encrypted-media"></iframe>
+                </div>
+                <div class="rating">
+                    <label for="{{ song.spotify_id }}">Rating (1-10):</label>
+                    <input id="{{ song.spotify_id }}" type="number" name="{{ song.spotify_id }}" min="1" max="10" placeholder="1-10" value="1" required>
+                </div>
+            </div>
+            {% endfor %}
+            <button type="submit" class="submit-btn">Submit Ratings</button>
+        </form>
+    </div>
+</body>
+</html>

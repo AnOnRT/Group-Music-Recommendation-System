@@ -1,0 +1,21 @@
+<!-- recommendations.html -->
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="recommendations-container">
+    <h1>Recommendations</h1>
+    {% for recommendation in recommendations %}
+        <div class="song">
+            <div class="song-info">
+                <!-- Spotify Embedded Player -->
+                <iframe src="https://open.spotify.com/embed/track/{{ recommendation.spotify_song_id }}" width="300" height="80" frameborder="0" allowtransparency="true" allow="encrypted-media"></iframe>
+            </div>
+        </div>
+    {% endfor %}
+    <!-- <ul>
+        {% for recommendation in recommendations %}
+        <li>{{ recommendation.spotify_song_id }}</li>
+        {% endfor %}
+    </ul> -->
+</div>
+{% endblock %}

@@ -1,0 +1,180 @@
+{% extends 'base.html' %} {% block content %}
+<div class="message-box">
+  <h2>Chat Room: {{code}}</h2>
+  <div class="messages" id="messages"></div>
+  <div class="inputs">
+    <input
+      type="text"
+      rows="3"
+      placeholder="Message"
+      name="message"
+      id="message"
+    />
+    <button type="button" name="send" id="send-btn" onClick="sendMessage()">
+      Send
+    </button>
+  </div>
+</div>
+<script type="text/javascript">
+  var socketio = io();
+//   const sendMessage = () => {
+//     console.log("send")
+//   };
+  const messages = document.getElementById("messages");
+
+  const createMessage = (name, msg) => {
+    const content = `
+    <div class="text">
+        <span>
+            <strong>${name}</strong>: ${msg}
+        </span>
+        <span class="muted">
+            ${new Date().toLocaleString()}
+        </span>
+    </div>
+    `;
+    messages.innerHTML += content;
+  };
+
+  socketio.on("message", (data) => {
+    createMessage(data.name, data.message);
+  });
+
+  const sendMessage = () => {
+    const message = document.getElementById("message");
+    if (message.value == "") return;
+    socketio.emit("message", { data: message.value });
+    message.value = "";
+  };
+  document.getElementById("message").addEventListener("keypress", function(event) {
+        if (event.key === "Enter") {
+            event.preventDefault(); // Prevent the default action (form submission)
+            sendMessage();
+        }
+  });
+</script>
+{% for msg in messages %}
+<script type="text/javascript">
+  createMessage("{{msg.name}}", "{{msg.message}}");
+</script>
+{% endfor %} {% endblock %} 
+
+
+
+#chat-room {
+    max-width: 100%; /* Increase width if needed */
+    margin: auto;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: #f9f9f9;
+  }
+  
+  #messages {
+    height: 500px; /* Increased height */
+    overflow-y: auto;
+    border: 1px solid #ccc;
+    padding: 10px;
+    margin-bottom: 20px;
+    background-color: white;
+  }
+  
+  /* ... rest of your CSS ... */
+  
+  
+  #messages div {
+    margin-bottom: 10px;
+    padding: 5px;
+    border-radius: 4px;
+    background-color: #eef;
+    word-wrap: break-word;
+  }
+  
+  #message-form {
+    display: flex;
+  }
+  
+  #message-form input[type="text"] {
+    flex-grow: 1;
+    padding: 10px;
+    margin-right: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+  }
+  
+  #message-form button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    background-color: #007bff;
+    color: white;
+    cursor: pointer;
+  }
+  
+  #message-form button:hover {
+    background-color: #0056b3;
+  }
+
+
+
+
+
+
+<!-- room.html -->
+{% extends 'base.html' %}
+
+{% block content %}
+<div id="chat-room" class="message-box">
+    <h2>Chat Room: {{ room.code }}</h2>
+    <div id="messages" class="message">
+        {% for message in past_messages %}
+            <div>{{ message.user.username }}: {{ message.content }}</div>
+        {% endfor %}
+    </div>
+    <form id="message-form">
+        <input type="text" id="message" placeholder="Type a message...">
+        <button type="submit">Send</button>
+    </form>
+    <a href="{{ url_for('home') }}" class="back-to-home-btn">Back to Home</a>
+</div>
+<div class="members-container">
+  <h3 class="members-title">Members:</h3>
+  <ul class="members-list">
+      {% for member in members %}
+      <li>{{ member.username }}</li>
+      {% endfor %}
+  </ul>
+</div>
+
+<!-- Displaying songs and ratings -->
+<div class="songs-container">
+  <h3 class="songs-title">Songs and Ratings:</h3>
+  <ul class="songs-list">
+      {% for song in songs %}
+      <li>
+          {{ song.name }} - Rating: {{ ratings[song.id] if song.id in ratings else 'Not Rated' }}
+      </li>
+      {% endfor %}
+  </ul>
+</div>
+
+<script type="text/javascript">
+    var socket = io();
+    
+    socket.on('connect', function() {
+        socket.emit('join', {'room': '{{ room.code }}'});
+    });
+
+    document.getElementById('message-form').onsubmit = function(e) {
+        e.preventDefault();
+        var message = document.getElementById('message').value;
+        socket.emit('send_message', {data: message, room: '{{ room.code }}'});
+        document.getElementById('message').value = '';
+    };
+
+    socket.on('receive_message', function(data) {
+        var messages = document.getElementById('messages');
+        messages.innerHTML += '<div>' + data.msg + '</div>';  // Update as needed
+    });
+</script>
+{% endblock %}

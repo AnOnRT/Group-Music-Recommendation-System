@@ -1,0 +1,674 @@
+<!-- room.html -->
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="chat-container">
+    <div id="chat-room" data-is-admin="{{ user.id == room.admin_id }}" data-voted-first-round="{{ voted_1st_round }}" data-voted-second-round="{{ voted_2nd_round }}" num-votes-1 = {{votes_count_1st_round}} num-votes-2 = {{votes_count_2nd_round}}>
+        <h2>Chat Room: {{ room.code }}</h2>
+        <div id="pinned-message-container" class="pinned-message">
+            {% if room.pinned_message %} 
+                {{room.pinned_message}}
+            {% endif %}:
+        </div>
+        <div id="messages" class="messages">
+            {% for message in past_messages %}
+            <div class="{{ 'admin-message' if message.user.id == room.admin_id else '' }}">
+                {{ message.user.username }}
+                {% if message.user.id == room.admin_id %} 
+                    (admin)
+                {% endif %}:
+                {{ message.content }}
+            </div>
+            {% endfor %}
+        </div>
+        <form id="message-form">
+            <input type="text" id="message" placeholder="Type a message...">
+            <button type="submit">Send</button>
+        </form>
+    </div>
+    <a href="{{ url_for('home') }}" class="back-to-home-btn">Back to Home</a>
+
+    <!-- Members and songs sections are now inside a separate div under the chat-room -->
+    <div class="info-sections">
+        <div class="members-container">
+            <h3 class="members-title">Members:</h3>
+            <ul class="members-list" id="members-list">
+                {% for member in members %}
+                <li>{{ member.username }}{% if member.id == room.admin_id %} (admin){% endif %}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+
+        {% if final_songs %}
+        <div class="songs-container">
+                <h3 class="songs-title">Final Recommendations:</h3>
+                <div id="recommendations-container-final" class="recommendations-container">
+                {% for song_id in final_songs %}
+                    <div class="song">
+                        <div class="song-info">
+                            <iframe src="https://open.spotify.com/embed/track/{{ song_id }}" width="300" height="80" frameborder="0" allowtransparency="true" allow="encrypted-media"></iframe>
+                        </div>
+                    </div>
+                {% endfor %}
+                </div>
+        </div>
+        {% endif %}
+
+
+        {% if top_songs_after_1st_round %}
+        <div class="songs-container">
+            <form id="voting-form-2" method="post" action="{{ url_for('submit_votes_2nd', room_id=room.id) }}">
+                <h3 class="songs-title">Group Recommendations After 1st Round of Voting:</h3>
+                <div id="recommendations-container-2" class="recommendations-container">
+                {% for song_id in top_songs_after_1st_round %}
+                    <div class="song">
+                        <div class="song-info">
+                            <iframe src="https://open.spotify.com/embed/track/{{ song_id }}" width="300" height="80" frameborder="0" allowtransparency="true" allow="encrypted-media"></iframe>
+                            {% if user.id != room.admin_id and voted_2nd_round == False%}
+                                <label for="{{ song_id }}">Your vote (1-10):</label>
+                                <input id="{{ song_id }}" type="number" name="{{ song_id }}" min="0" max="10" placeholder="0-10" value="0" required>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+                </div>
+
+                {% if user.id != room.admin_id %}
+                <h3>Second Round Voting:</h3>
+                    <div id="recommendations-container-2" class="recommendations-container">
+                        <!-- Recommendations will be added here by JavaScript -->
+                    </div>
+                    <button type="submit" id="vote-submit-2" disabled>Submit Votes</button>
+                <!-- </form> -->
+                <div id="timer-2"></div>
+                <div id="timer-data-2" data-remaining-time="{{ remaining_time2 }}" style="display: none;"></div>
+                {% endif %}
+            </form>
+        </div>
+        {% endif %}
+      
+      
+        <div id="top-songs-after-voting-container" class="top-songs-container">
+        </div>
+
+        <div class="songs-container">
+            <form id="voting-form" method="post" action="{{ url_for('submit_votes', room_id=room.id) }}">
+                <h3 class="songs-title">Initial Group Recommendations:</h3>
+                <div id="recommendations-container" class="recommendations-container">
+                    <!-- Recommendations will be added here by JavaScript -->
+                    {% for spotify_song_id in rec_song_ids %}
+                        <div class="song">
+                            <div class="song-info">
+                                <iframe src="https://open.spotify.com/embed/track/{{ spotify_song_id }}" width="300" height="80" frameborder="0" allowtransparency="true" allow="encrypted-media"></iframe>
+                                {% if user.id != room.admin_id and voted_1st_round == False%}
+                                <label for="{{ spotify_song_id }}">Your vote (1-10):</label>
+                                <input id="{{ spotify_song_id }}" type="number" name="{{ spotify_song_id }}" min="0" max="10" placeholder="0-10" value="0" required>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <!-- Newly Added -->
+                <!-- <div class="voting-section" id="voting-section"> -->
+                    {% if user.id != room.admin_id %}
+                    <h3>First Round Voting:</h3>
+                        <button type="submit" id="vote-submit" disabled>Submit Votes</button>
+                    <div id="timer"></div>
+                    <div id="timer-data" data-remaining-time="{{ remaining_time }}" style="display: none;"></div>
+                    {% endif %}
+            </form>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">
+    var socket = io();
+    
+    socket.on('connect', function() {
+        socket.emit('join', {'room': '{{ room.code }}'});
+    });
+
+    document.getElementById('message-form').onsubmit = function(e) {
+        e.preventDefault();
+        var message = document.getElementById('message').value;
+        socket.emit('send_message', {data: message, room: '{{ room.code }}'});
+        document.getElementById('message').value = '';
+    };
+
+    socket.on('update_pinned_message', function(data) {
+        var pinnedContainer = document.getElementById('pinned-message-container');
+        pinnedContainer.innerHTML = data.msg; // Or use some templating to make it look nice
+    });
+    
+    socket.on('update_members', function(data) {
+        var membersList = document.getElementById('members-list');
+        membersList.innerHTML = '';  // Clear existing list
+
+        data.members.forEach(function(member) {
+            // var li = document.createElement('li');
+            // li.textContent = member.username; // Accessing the 'username' property of the member object
+            // membersList.appendChild(li);
+            var li = document.createElement('li');
+            var text = member.username;
+            if (member.isAdmin) { // Assuming `isAdmin` is a boolean flag sent from the server
+                text += " (admin)";
+            }
+            li.textContent = text;
+            membersList.appendChild(li);
+        });
+    });
+    
+    socket.on('receive_message', function(data) {
+    if (data.pinned) {
+        // Handle pinned message
+        var pinnedContainer = document.getElementById('pinned-message-container');
+        pinnedContainer.innerHTML = data.msg; // Or use some templating to make it look nice
+    } else {
+        // Handle regular chat message
+        if(data.admin == true){
+            var messages = document.getElementById('messages');
+            messages.innerHTML += '<div class=\"admin-message\">' + data.msg + '</div>'; // Update as needed
+        }
+        else{
+            var messages = document.getElementById('messages');
+            messages.innerHTML += '<div>' + data.msg + '</div>'; // Update as needed
+        }  
+    }
+    });
+
+    socket.on('final_songs', function(data) {
+        var infoSections = document.querySelector('.info-sections');
+        var membersContainer = document.querySelector('.members-container');
+        var songFinalContainer = document.createElement('div');
+        songFinalContainer.className = 'songs-container';
+
+        var finalTitle = document.createElement('h3');
+        finalTitle.className = 'songs-title';
+        finalTitle.textContent = 'Final Recommendations:';
+        songFinalContainer.appendChild(finalTitle);
+
+        var recommendationsContainer = document.createElement('div');
+        recommendationsContainer.id = 'recommendations-container-final';
+        recommendationsContainer.className = 'recommendations-container';
+        songFinalContainer.appendChild(recommendationsContainer);
+
+        data.final_songs.forEach(function(songId) {
+            var songDiv = document.createElement('div');
+            songDiv.className = 'song';
+            var songInfoDiv = document.createElement('div');
+            songInfoDiv.className = 'song-info';
+            songDiv.appendChild(songInfoDiv);
+
+            var iframe = document.createElement('iframe');
+            iframe.src = `https://open.spotify.com/embed/track/${songId}`;
+            iframe.width = "300";
+            iframe.height = "80";
+            iframe.frameBorder = "0";
+            iframe.allowTransparency = "true";
+            iframe.allow = "encrypted-media";
+            songInfoDiv.appendChild(iframe);
+
+            recommendationsContainer.appendChild(songDiv);
+        })
+
+        if (membersContainer.nextSibling) {
+                infoSections.insertBefore(songFinalContainer, membersContainer.nextSibling);
+        } else {
+            infoSections.appendChild(songFinalContainer);
+        }
+
+    });
+    socket.on('top_songs_after_1st_round', function(data) {
+        var notAdmin = document.getElementById('chat-room').getAttribute('data-is-admin') === 'False'; // Assuming the value is a string 'True' or 'False'
+        var infoSections = document.querySelector('.info-sections');
+        var membersContainer = document.querySelector('.members-container');
+
+        // Create a new container for second round voting
+        var secondRoundContainer = document.createElement('div');
+        secondRoundContainer.className = 'songs-container';
+        secondRoundContainer.id = 'voting-container-2';
+
+        // Create a form for second round voting
+        var secondRoundForm = document.createElement('form');
+        secondRoundForm.id = 'voting-form-2';
+        secondRoundForm.method = 'post';
+        secondRoundForm.action = "{{ url_for('submit_votes_2nd', room_id=room.id) }}";
+        secondRoundContainer.appendChild(secondRoundForm);
+
+        // Title for the second round
+        var secondRoundTitle = document.createElement('h3');
+        secondRoundTitle.className = 'songs-title';
+        secondRoundTitle.textContent = 'Group Recommendations After 1st Round of Voting:';
+        secondRoundForm.appendChild(secondRoundTitle);
+
+        // Container for second round recommendations
+        var recommendationsContainer = document.createElement('div');
+        recommendationsContainer.id = 'recommendations-container-2';
+        recommendationsContainer.className = 'recommendations-container';
+        secondRoundForm.appendChild(recommendationsContainer);
+
+        // Iterate over top six songs and create elements
+        data.top_songs_after_1st_round.forEach(function(songId) {
+            var songDiv = document.createElement('div');
+            songDiv.className = 'song';
+            var songInfoDiv = document.createElement('div');
+            songInfoDiv.className = 'song-info';
+            songDiv.appendChild(songInfoDiv);
+
+            // Create the iframe for each song
+            var iframe = document.createElement('iframe');
+            iframe.src = `https://open.spotify.com/embed/track/${songId}`;
+            iframe.width = "300";
+            iframe.height = "80";
+            iframe.frameBorder = "0";
+            iframe.allowTransparency = "true";
+            iframe.allow = "encrypted-media";
+            songInfoDiv.appendChild(iframe);
+            
+            if(notAdmin){
+                var label = document.createElement('label');
+                label.htmlFor = songId;
+                label.textContent = 'Your vote (1-10):';
+                songInfoDiv.appendChild(label);
+
+                // Input for rating
+                var input = document.createElement('input');
+                input.type = 'number';
+                input.id = songId;
+                input.name = songId;
+                input.min = '0';
+                input.max = '10';
+                input.placeholder = '0-10';
+                input.value = '0';
+                input.required = true;
+                songInfoDiv.appendChild(input);
+            }    
+            recommendationsContainer.appendChild(songDiv);
+
+        });
+
+        
+        if(notAdmin){
+            var secondRoundTitle = document.createElement('h3');
+            secondRoundTitle.textContent = 'Second Round Voting:';
+            secondRoundForm.appendChild(secondRoundTitle);
+
+            // Submit button for second round voting
+        
+            var submitButton = document.createElement('button');
+            submitButton.type = 'submit';
+            submitButton.id = 'vote-submit-2';
+            submitButton.disabled = true;
+            submitButton.textContent = 'Submit Votes';
+            secondRoundForm.appendChild(submitButton);
+
+            // Timer for second round voting
+            var secondRoundTimer = document.createElement('div');
+            secondRoundTimer.id = 'timer-2';
+            secondRoundForm.appendChild(secondRoundTimer);
+
+            // Timer data for second round voting
+            var secondRoundTimerData = document.createElement('div');
+            secondRoundTimerData.id = 'timer-data-2';
+            secondRoundTimerData.setAttribute('data-remaining-time', '{{ remaining_time_2 }}');
+            secondRoundTimerData.style.display = 'none';
+            secondRoundForm.appendChild(secondRoundTimerData);
+
+
+            // Insert the new container after the members container
+
+        }
+
+        if (membersContainer.nextSibling) {
+                infoSections.insertBefore(secondRoundContainer, membersContainer.nextSibling);
+        } else {
+            infoSections.appendChild(secondRoundContainer);
+        }
+
+        if(notAdmin){
+            var remainingTime = data.remaining_time_2; // Remaining time from the server
+            if (Number.isFinite(remainingTime) && remainingTime > 0) {
+                var display = document.getElementById('timer-2');
+                startTimer2(remainingTime, display);
+            }
+
+            document.getElementById('voting-form-2').addEventListener('submit', function(event) {
+                event.preventDefault();
+                var inputs = document.querySelectorAll('#recommendations-container-2 input[type="number"]');
+                var sum = 0;
+                var final_sum = document.getElementById('chat-room').getAttribute('num-votes-2');
+                inputs.forEach(function(input) {
+                    sum += Number(input.value); // Ensure the value is treated as a number
+                });
+
+                if(sum > final_sum){
+                    alert(`The total number of the used votes must be equal to ${final_sum}. You are exceeding the intended votes count by ${sum - final_sum} votes. Please adjust your votes and try again.`);
+                    var submitButton = document.getElementById('vote-submit-2');
+                    submitButton.disabled = false; // Re-enable the submit button to allow for corrections
+                    return; // Exit the function without submitting the form
+                }
+                else if(sum < final_sum){
+                    alert(`The total number of the used votes must be equal to ${final_sum}. You are missing ${final_sum - sum} votes. Please adjust your votes and try again.`);
+                    var submitButton = document.getElementById('vote-submit-2');
+                    submitButton.disabled = false; // Re-enable the submit button to allow for corrections
+                    return; // Exit the function without submitting the form
+                }
+
+                var submitButton = document.getElementById('vote-submit-2'); // Get the submit button
+                submitButton.disabled = true; 
+                var display = document.getElementById('timer-2');
+                display.textContent ="You have already voted for this round!";
+                var formData = new FormData(this);
+                // document.getElementById('vote-submit-2').disabled = true;
+                fetch("{{ url_for('submit_votes_2nd', room_id=room.id) }}", {
+                    method: 'POST',
+                    body: formData
+                }).then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    var inputs = document.querySelectorAll('#recommendations-container-2 input[type="number"]');
+                    inputs.forEach(function(input) {
+                        input.readOnly = true; // Set inputs as read-only
+                    });
+                    // Additional actions after successful submission
+                }).catch(error => console.error('Error:', error));
+               
+            });
+        }
+        
+    });
+
+    
+
+    function startTimer2(duration, display) {
+        var timer = duration, minutes, seconds;
+        var intervalId2 = setInterval(function () {
+            minutes = parseInt(timer / 60, 10);
+            seconds = parseInt(timer % 60, 10);
+
+            minutes = minutes < 10 ? "0" + minutes : minutes;
+            seconds = seconds < 10 ? "0" + seconds : seconds;
+
+            if(minutes == 0 && seconds == 0){
+                display.textContent = "You can vote now!";
+            }
+            else{
+                display.textContent = minutes + ":" + seconds + "\n" + "You can vote when the timer ends!";   
+            }
+
+            if (--timer < 0) {
+                timer = 0;
+                // Enable the submit button when time is up
+                document.getElementById('vote-submit-2').disabled = false;
+                clearInterval(intervalId2);
+            }
+        }, 1000);
+    }
+
+    var timerDataElement = document.getElementById('timer-data-2');
+    if (timerDataElement) {
+        var remainingTime2 = parseInt(timerDataElement.getAttribute('data-remaining-time'), 10);
+        var display = document.getElementById('timer-2');
+        var submitButton = document.getElementById('vote-submit-2');
+        var hasVoted = document.getElementById('chat-room').getAttribute('data-voted-second-round') === 'True';
+
+        if (remainingTime2 > 0) {
+            // If there is remaining time, start the timer
+            startTimer2(remainingTime2, display);
+        } 
+        if (remainingTime2 == -1) {
+            
+            var hasVoted = document.getElementById('chat-room').getAttribute('data-voted-second-round') === 'True';
+        
+            if(document.getElementById('vote-submit-2').disabled && hasVoted){
+                document.getElementById('vote-submit-2').disabled = true;
+                display.textContent = "You have already voted for this round!"
+            }
+            else if(document.getElementById('vote-submit-2').disabled && !hasVoted){
+                document.getElementById('vote-submit-2').disabled = false;
+                display.textContent = "You can vote now!"
+            }
+        }
+    }
+    
+    // Check if the second voting form exists before attaching the event listener
+    var secondVotingForm = document.getElementById('voting-form-2');
+    if (secondVotingForm) {
+        secondVotingForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            
+            var inputs = document.querySelectorAll('#recommendations-container-2 input[type="number"]');
+            var sum = 0;
+            var final_sum = document.getElementById('chat-room').getAttribute('num-votes-2');
+            inputs.forEach(function(input) {
+                sum += Number(input.value); // Ensure the value is treated as a number
+            });
+
+            if(sum > final_sum){
+                alert(`The total number of the used votes must be equal to ${final_sum}. You are exceeding the intended votes count by ${sum - final_sum} votes. Please adjust your votes and try again.`);
+                var submitButton = document.getElementById('vote-submit-2');
+                submitButton.disabled = false; // Re-enable the submit button to allow for corrections
+                return; // Exit the function without submitting the form
+            }
+            else if(sum < final_sum){
+                alert(`The total number of the used votes must be equal to ${final_sum}. You are missing ${final_sum - sum} votes. Please adjust your votes and try again.`);
+                var submitButton = document.getElementById('vote-submit-2');
+                submitButton.disabled = false; // Re-enable the submit button to allow for corrections
+                return; // Exit the function without submitting the form
+            }
+
+
+            var submitButton = document.getElementById('vote-submit-2'); // Get the submit button
+            submitButton.disabled = true; // Disable submit button immediately to prevent multiple submissions
+            var display = document.getElementById('timer-2');
+            display.textContent = "You have already voted for this round!";
+
+            var formData = new FormData(this);
+            fetch("{{ url_for('submit_votes_2nd', room_id=room.id) }}", {
+                method: 'POST',
+                body: formData
+            }).then(response => response.json())
+            .then(data => {
+                alert(data.message);
+                var inputs = document.querySelectorAll('#recommendations-container-2 input[type="number"]');
+                inputs.forEach(function(input) {
+                    input.readOnly = true; // Make inputs read-only
+                });
+                // Handle additional actions after successful submission, if necessary
+            }).catch(error => {
+                console.error('Error:', error);
+                // Optionally re-enable the submit button if there was an error in submission
+                submitButton.disabled = false;
+            });
+        });
+    } 
+
+   
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    socket.on('show_recommendations', function(data) {
+        
+        var notAdmin = document.getElementById('chat-room').getAttribute('data-is-admin') === 'False'; // Assuming the value is a string 'True' or 'False'
+      
+        var recommendationsContainer = document.getElementById('recommendations-container');
+        recommendationsContainer.innerHTML = ''; // Clear any existing recommendations
+        
+        data.spotify_song_ids.forEach(function(songId) {
+            var songDiv = document.createElement('div');
+            songDiv.className = 'song';
+            var songInfoDiv = document.createElement('div');
+            songInfoDiv.className = 'song-info';
+            songDiv.appendChild(songInfoDiv);
+
+            var iframe = document.createElement('iframe');
+            iframe.src = "https://open.spotify.com/embed/track/" + songId;
+            iframe.width = "300";
+            iframe.height = "80";
+            iframe.frameBorder = "0";
+            iframe.allowTransparency = "true";
+            iframe.allow = "encrypted-media";
+            songInfoDiv.appendChild(iframe);
+            
+            
+            // console.log(notAdmin);
+            if(notAdmin){
+                var label = document.createElement('label');
+                label.for = songId;
+                label.textContent = 'Your vote (1-10):';
+                songInfoDiv.appendChild(label);
+
+                var input = document.createElement('input');
+                input.id = songId;
+                input.type = 'number';
+                input.name = songId;
+                input.min = '0';
+                input.max = '10';
+                input.placeholder = '0-10';
+                input.value = '0';
+                input.required = true;
+                songInfoDiv.appendChild(input);
+            }
+            
+            recommendationsContainer.appendChild(songDiv);
+        
+            if(notAdmin){
+                var remainingTime = data.remaining_time; // Remaining time from the server
+                if (Number.isFinite(remainingTime) && remainingTime > 0) {
+                    var display = document.getElementById('timer');
+                    startTimer(remainingTime, display);
+                }
+            }
+        });
+    });
+
+    var remainingTime = document.getElementById('timer-data').getAttribute('data-remaining-time');
+    remainingTime = parseInt(remainingTime, 10);  // Convert to integer
+
+    function startTimer(duration, display) {
+        var timer = duration, minutes, seconds;
+        var intervalId = setInterval(function () {
+            minutes = parseInt(timer / 60, 10);
+            seconds = parseInt(timer % 60, 10);
+
+            minutes = minutes < 10 ? "0" + minutes : minutes;
+            seconds = seconds < 10 ? "0" + seconds : seconds;
+
+            if(minutes == 0 && seconds == 0){
+                display.textContent = "You can vote now!";
+            }
+            else{
+                display.textContent = minutes + ":" + seconds + "\n" + "You can vote when the timer ends!";   
+            }
+
+            if (--timer < 0) {
+                timer = 0;
+                document.getElementById('vote-submit').disabled = false;
+                clearInterval(intervalId);
+            }
+        }, 1000);
+    }
+    
+
+    if (remainingTime > 0) {
+        var display = document.getElementById('timer');
+        startTimer(remainingTime, display);
+    }
+    if (remainingTime == -1) {
+       
+        var display = document.getElementById('timer');
+        var hasVoted = document.getElementById('chat-room').getAttribute('data-voted-first-round') === 'True';
+        
+        if(document.getElementById('vote-submit').disabled && hasVoted){
+            document.getElementById('vote-submit').disabled = true;
+            var display = document.getElementById('timer');
+            display.textContent = "You have already voted for this round!"
+        }
+        else if(document.getElementById('vote-submit').disabled && !hasVoted){
+            document.getElementById('vote-submit').disabled = false;
+            var display = document.getElementById('timer');
+            display.textContent = "You can vote now!"
+        }
+    }
+
+    
+
+    // AJAX request to submit votes
+    document.getElementById('voting-form').addEventListener('submit', function(event) {
+        event.preventDefault();
+
+        var inputs = document.querySelectorAll('#recommendations-container input[type="number"]');
+        var sum = 0;
+        var final_sum = document.getElementById('chat-room').getAttribute('num-votes-1');
+        inputs.forEach(function(input) {
+            sum += Number(input.value); // Ensure the value is treated as a number
+        });
+
+        if(sum > final_sum){
+            alert(`The total number of the used votes must be equal to ${final_sum}. You are exceeding the intended votes count by ${sum - final_sum} votes. Please adjust your votes and try again.`);
+            var submitButton = document.getElementById('vote-submit');
+            submitButton.disabled = false; // Re-enable the submit button to allow for corrections
+            return; // Exit the function without submitting the form
+        }
+        else if(sum < final_sum){
+            alert(`The total number of the used votes must be equal to ${final_sum}. You are missing ${final_sum - sum} votes. Please adjust your votes and try again.`);
+            var submitButton = document.getElementById('vote-submit');
+            submitButton.disabled = false; // Re-enable the submit button to allow for corrections
+            return; // Exit the function without submitting the form
+        }
+        
+
+        var submitButton = document.getElementById('vote-submit'); // Get the submit button
+        submitButton.disabled = true;
+        var display = document.getElementById('timer');
+        display.textContent ="You have already voted for this round!";
+
+
+        var formData = new FormData(this);
+        fetch("{{ url_for('submit_votes', room_id=room.id) }}", {
+            method: 'POST',
+            body: formData,
+        }).then(response => response.json())
+        .then(data => {
+            alert(data.message);
+            var inputs = document.querySelectorAll('#recommendations-container input[type="number"]');
+            inputs.forEach(function(input) {
+                input.readOnly = true; // Set inputs as read-only
+            });
+            // Additional actions after successful submission
+        }).catch(error => console.error('Error:', error));
+    });
+
+
+    socket.on('display_recommendations', function(data) {
+        var isAdmin = document.getElementById('chat-room').getAttribute('data-is-admin') === 'True'; // Assuming the value is a string 'True' or 'False'
+        var recommendationsContainer = document.getElementById('recommendations-container');
+        recommendationsContainer.innerHTML = '';
+
+        data.recommendations.forEach(function(recommendation) {
+            // Create the HTML for each recommendation with voting inputs
+            var recDiv = document.createElement('div');
+            if (!isAdmin) {
+                recDiv.innerHTML = `
+                <div class="song">
+                    <iframe src="https://open.spotify.com/embed/track/${recommendation.spotify_song_id}" width="300" height="80"></iframe>
+                    <input type="number" name="${recommendation.spotify_song_id}" min="1" max="10">
+                </div>
+            `
+            } else {
+                recDiv.innerHTML = `
+                <div class="song">
+                    <iframe src="https://open.spotify.com/embed/track/${recommendation.spotify_song_id}" width="300" height="80"></iframe>
+                </div>
+            `
+            }
+            recommendationsContainer.appendChild(recDiv);
+        });
+
+        // Show the voting section
+        document.getElementById('voting-section').style.display = 'block';
+    });
+
+    
+</script>
+{% endblock %}
